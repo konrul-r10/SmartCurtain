@@ -20,6 +20,7 @@ Evinizde konfor ve teknolojiyi bir araya getiren Akıllı Perde Sistemi ile tan�
 🗣️ "Siri, perdeleri kapat."<br>
 🔹 Kademeli Açma & Kapatma: Perdeleri %0’dan %100’e kadar istediğiniz seviyeye ayarlayın.<br>
 🔹 Zamanlayıcı ile Otomasyon: Sabah perdeleriniz otomatik açılsın, akşam kendiliğinden kapansın!<br>
+<br>
 💾 Hafıza & Güvenlik Özellikleri<br>
 🔹 SD Kart Hafızası: Elektrik kesildiğinde mevcut perde seviyesi kaydedilir, sistem açıldığında aynı seviyeden devam eder.<br>
 🔹 Gereksiz Motor Hareketlerini Önler: Zaten açık veya kapalıysa, motor boşuna çalışmaz. Sessiz ve enerji tasarruflu!<br>
