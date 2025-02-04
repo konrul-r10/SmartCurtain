@@ -1,7 +1,7 @@
-# SmartCurtain
+# R10 Tech SmartCurtain
 
 
-Akıllı Perde Sistemi – Apple HomeKit ile Eviniz Daha Akıllı! 🍏🏡✨ <br>
+#Akıllı Perde Sistemi – Apple HomeKit ile Eviniz Daha Akıllı! 🍏🏡✨ <br>
 Evinizde konfor ve teknolojiyi bir araya getiren Akıllı Perde Sistemi ile tanışın!<br>
 📱 WiFi bağlantılı, uzaktan kontrol edilebilir ve Apple HomeKit ile tam uyumlu!<br>
 <br>
