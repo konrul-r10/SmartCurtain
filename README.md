@@ -1,0 +1,2 @@
+# SmartCurtain
+Akıllı perde sistemi
