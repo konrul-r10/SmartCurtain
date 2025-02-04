@@ -1,0 +1,556 @@
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <SD.h>
+#include <ArduinoOTA.h>
+
+// WiFi bağlantı bilgileri
+const char* ssid = "R10_2.4GHz";
+const char* password = "2184582e";
+
+// OTA
+#define SENSORNAME "Perde" //cihazin adi
+#define OTApassword "246" //OTA baglanti sifresi
+int OTAport = 8266;
+
+
+// MQTT broker bilgileri
+const char* mqtt_server = "192.168.1.xxx";
+const int mqtt_port = xxx;
+const char* mqtt_username = ""; // Opsiyonel
+const char* mqtt_password = ""; // Opsiyonel
+
+// SD kart için dosya adı
+const char* fileName = "/curtain_value.txt";
+
+// MQTT client
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// Motor pinleri
+const int motorPin1 = D2; // Motorun birinci pini
+const int motorPin2 = D3; // Motorun ikinci pini
+const int motorSpeed = D1; // Motor hızını kontrol etmek için PWM pini
+
+
+
+int curtainValue = 0;
+
+// Motorun hareket durumu
+bool motorMoving = false;
+
+// Fonksiyon prototipleri
+void setup_wifi();
+void callback(char* topic, byte* payload, unsigned int length);
+void reconnect();
+void acMotor();
+void downMotor();
+void yuzMotor();
+void sifirMotor();
+void doksanMotor();
+void seksenMotor();
+void yetmisMotor();
+void altMotor();
+void elliMotor();
+void kirkMotor();
+void otuzMotor();
+void yirmiMotor();
+void onMotor();
+void stopMotor();
+//void checkMotorStop();
+void saveCurtainValue(); // Perde değerini SD karta kaydeden fonksiyon
+void loadCurtainValue(); // Perde değerini SD karttan yükleyen fonksiyon
+void publishCurtainValue(); // Perde değerini MQTT ile yayınlayan fonksiyon
+
+
+// Motor çalışma süresi ve başlangıç zamanı
+unsigned long motorStartTime = 0;
+const unsigned long motorRunTime = 150000; // 150 saniye
+unsigned long ninetyPercentTime = motorRunTime * 0.9; // Sürenin %90'ı
+void setup() {
+  pinMode(motorPin1, OUTPUT);
+  pinMode(motorPin2, OUTPUT);
+  pinMode(motorSpeed, OUTPUT);
+
+  Serial.begin(115200);
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // OTA setup
+  ArduinoOTA.setHostname(SENSORNAME);
+  ArduinoOTA.setPort(OTAport);
+  ArduinoOTA.setPassword((const char *)OTApassword);
+  ArduinoOTA.begin();
+
+
+  setup_wifi();
+
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback);
+  
+  reconnect();
+  //String message = String(curtainValue); // Perde değerini stringe dönüştür
+  //client.publish("blindbr/curtain_value", message.c_str()); // MQTT ile perde değerini yayınla
+  // SD kartı başlat
+  if (!SD.begin(D8)) {
+    Serial.println("SD kart başlatılamadı!");
+    return;
+  }
+  Serial.println("SD kart başarıyla başlatıldı.");
+
+  // Perde değerini SD karttan yükle
+  loadCurtainValue();
+  
+  // Perde değerini MQTT ile yayınla
+  publishCurtainValue();
+  Serial.println("SD karttan okunan değer MQTT ile " + String(curtainValue) + " olarak yayınlandı .");
+  // MQTT broker'a perde değerini yayınla
+  //String message = String(curtainValue);
+  //client.publish("blindbr/curtain_value", message.c_str());
+}
+
+
+
+void loop() {
+  ArduinoOTA.handle();
+  if (!client.connected()) {
+    reconnect();
+  }
+  
+  client.loop();
+  
+  //checkMotorStop();
+}
+void loadCurtainValue() {
+  // SD karta kayıtlı perde değerini yükle
+  File file = SD.open(fileName);
+  if (file) {
+    // Dosyanın sonuna gidin
+    file.seek(file.size());
+    // Dosyanın sonuna kadar geri gidin
+    while (file.position() > 0) {
+      // Bir karakter oku
+      char character = file.read();
+      // Satır sonuna ulaşıldığında, okuma döngüsünden çık
+      if (character == '\n') {
+        break;
+      }
+      // Dosyanın sonundan başlayarak geri dönün
+      file.seek(file.position() - 2);
+    }
+    // Son satırı oku
+    String value = file.readStringUntil('\n');
+    // Dosyayı kapat
+    file.close();
+    // Okunan değeri perde değeri olarak ayarla
+    curtainValue = value.toInt();
+    Serial.println("Perde değeri SD karttan yüklendi: " + String(curtainValue));
+    publishCurtainValue();
+  } else {
+    Serial.println("Perde değeri yüklenemedi, dosya açılamadı!");
+  }
+}
+
+
+void setup_wifi() {
+  WiFi.begin(ssid, password);
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  
+  Serial.println("");
+  Serial.println("WiFi bağlantısı başarıyla yapıldı!");
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  payload[length] = '\0';
+  String strTopic = String(topic);
+  String switchCommand = String((char*)payload);
+   if (strTopic == "blindbr/move") {
+    // Perde değeri ayarlandığında MQTT ile yayınla
+    publishCurtainValue();
+    // Diğer işlemleri buraya ekleyin...
+  }
+    if (strTopic == "blindbr/move") {
+    if (switchCommand == "kontrol") {
+      publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    }}
+
+  if (strTopic == "blindbr/move") {
+    if (switchCommand == "100") {
+      yuzMotor();
+      motorStartTime = millis();
+      curtainValue = 100; // Perde değerini 100 olarak ayarla
+      //publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+      Serial.println("Perde değeri ayarlandı: 100");
+      saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    } else if (switchCommand == "0") {
+      sifirMotor();
+      curtainValue = 0; // Perde değerini 0 olarak ayarla
+      //publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+      Serial.println("Perde değeri ayarlandı: 0");
+      saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+      motorStartTime = millis();
+    }else if (switchCommand == "90") {
+      doksanMotor();
+      curtainValue = 90; // Perde değerini 90 olarak ayarla
+      motorStartTime = millis();
+      saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+      
+    }else if (switchCommand == "80") {
+      seksenMotor();
+      curtainValue = 80; // Perde değerini 80 olarak ayarla
+      motorStartTime = millis();
+      saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+      
+    }else if (switchCommand == "70") {
+      yetmisMotor();
+      curtainValue = 70; // Perde değerini 70 olarak ayarla
+      motorStartTime = millis();
+      saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    }else if (switchCommand == "60") {
+      altMotor();
+      curtainValue = 60; // Perde değerini 60 olarak ayarla
+      motorStartTime = millis();
+      saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    }else if (switchCommand == "50") {
+      elliMotor();
+      curtainValue = 50; // Perde değerini 50 olarak ayarla
+      motorStartTime = millis();
+      saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    }else if (switchCommand == "40") {
+      kirkMotor();
+      curtainValue = 40; // Perde değerini 40 olarak ayarla
+      motorStartTime = millis();
+      saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    }else if (switchCommand == "30") {
+      otuzMotor();
+      curtainValue = 30; // Perde değerini 30 olarak ayarla
+      motorStartTime = millis();
+      saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    }else if (switchCommand == "20") {
+      yirmiMotor();
+      curtainValue = 20; // Perde değerini 20 olarak ayarla
+      motorStartTime = millis();
+      saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    }else if (switchCommand == "10") {
+      onMotor();
+      curtainValue = 10; // Perde değerini 10 olarak ayarla
+      motorStartTime = millis();
+      saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    }
+    
+  }
+}
+
+
+void reconnect() {
+  while (!client.connected()) {
+    Serial.println("MQTT broker'a bağlanılıyor...");
+    if (client.connect("NodeMCU_Client", mqtt_username, mqtt_password)) {
+      Serial.println("MQTT broker'a başarıyla bağlanıldı!");
+      client.subscribe("blindbr/#");
+      publishCurtainValue();
+    } else {
+      Serial.print("Bağlantı hatası, tekrar denenecek: ");
+      Serial.println(client.state());
+      delay(5000); // 5 saniye bekle ve tekrar dene
+    }
+  }
+}
+
+
+void acMotor() {
+  // Motoru saat yönünde ve maksimum hızda döndürme
+  digitalWrite(motorPin1, HIGH);
+  digitalWrite(motorPin2, LOW);
+  analogWrite(motorSpeed, 255); // Maksimum hız: 255
+  // Motor hareket ediyor
+  // motorMoving = true;
+}
+
+void downMotor() {
+  // Motoru ters yönde döndür
+  digitalWrite(motorPin1, LOW);
+  digitalWrite(motorPin2, HIGH);
+  analogWrite(motorSpeed, 255);
+  // Seri iletişim mesajı gönder
+  Serial.println("Motor aşağı yönde çalışıyor.");
+}
+
+
+void yuzMotor() {
+  if (curtainValue < 100) {
+    acMotor(); // Motoru saat yönünde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((100 - curtainValue) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 100; // Perde değerini 100 olarak güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 100");
+    stopMotor(); // Motoru durdur
+    
+  }
+}
+
+
+void sifirMotor() {
+  if (curtainValue == 0) {
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 0");
+    stopMotor(); // Motoru durdur
+  } else if (curtainValue > 0) {
+    downMotor(); // Motoru saat yönü tersinde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((curtainValue - 0) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 0; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 0");
+    stopMotor(); // Motoru durdur
+  }
+}
+
+
+void doksanMotor() {
+  if (curtainValue > 90) {
+    downMotor(); // Motoru ters yönde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((curtainValue - 90) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 90; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 90");
+    stopMotor(); // Motoru durdur
+  } else if (curtainValue < 90) {
+    acMotor(); // Motoru saat yönünde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((90 - curtainValue) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 90; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 90");
+    stopMotor(); // Motoru durdur
+  }
+}
+void seksenMotor() {
+  if (curtainValue > 80) {
+    downMotor(); // Motoru ters yönde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((curtainValue - 80) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 80; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 80");
+    stopMotor(); // Motoru durdur
+  } else if (curtainValue < 80) {
+    acMotor(); // Motoru saat yönünde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((80 - curtainValue) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 80; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 80");
+    stopMotor(); // Motoru durdur
+  }
+}
+void yetmisMotor() {
+  if (curtainValue > 70) {
+    downMotor(); // Motoru ters yönde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((curtainValue - 70) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 70; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 70");
+    stopMotor(); // Motoru durdur
+  } else if (curtainValue < 70) {
+    acMotor(); // Motoru saat yönünde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((70 - curtainValue) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 70; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 70");
+    stopMotor(); // Motoru durdur
+  }
+}
+void altMotor() {
+  if (curtainValue > 60) {
+    downMotor(); // Motoru ters yönde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((curtainValue - 60) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 60; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 60");
+    stopMotor(); // Motoru durdur
+  } else if (curtainValue < 60) {
+    acMotor(); // Motoru saat yönünde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((60 - curtainValue) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 60; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 60");
+    stopMotor(); // Motoru durdur
+  }
+}
+void elliMotor() {
+  if (curtainValue > 50) {
+    downMotor(); // Motoru ters yönde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((curtainValue - 50) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 50; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 50");
+    stopMotor(); // Motoru durdur
+  } else if (curtainValue < 50) {
+    acMotor(); // Motoru saat yönünde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((50 - curtainValue) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 50; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 50");
+    stopMotor(); // Motoru durdur
+  }
+}
+void kirkMotor() {
+  if (curtainValue > 40) {
+    downMotor(); // Motoru ters yönde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((curtainValue - 40) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 40; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 40");
+    stopMotor(); // Motoru durdur
+  } else if (curtainValue < 40) {
+    acMotor(); // Motoru saat yönünde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((40 - curtainValue) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 40; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 40");
+    stopMotor(); // Motoru durdur
+  }
+}
+void otuzMotor() {
+  if (curtainValue > 30) {
+    downMotor(); // Motoru ters yönde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((curtainValue - 30) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 30; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 30");
+    stopMotor(); // Motoru durdur
+  } else if (curtainValue < 30) {
+    acMotor(); // Motoru saat yönünde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((30 - curtainValue) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 30; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 30");
+    stopMotor(); // Motoru durdur
+  }
+}
+void yirmiMotor() {
+  if (curtainValue > 20) {
+    downMotor(); // Motoru ters yönde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((curtainValue - 20) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 20; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 20");
+    stopMotor(); // Motoru durdur
+  } else if (curtainValue < 20) {
+    acMotor(); // Motoru saat yönünde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((20 - curtainValue) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 20; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 20");
+    stopMotor(); // Motoru durdur
+  }
+}
+void onMotor() {
+  if (curtainValue > 10) {
+    downMotor(); // Motoru ters yönde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((curtainValue - 10) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 10; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 10");
+    stopMotor(); // Motoru durdur
+  } else if (curtainValue < 10) {
+    acMotor(); // Motoru saat yönünde çalıştır
+    motorMoving = true; // Motor hareket ediyor
+    int delayTime = ((10 - curtainValue) / 10) * 15000; // Hesaplanan gecikme süresi
+    delay(delayTime);
+    curtainValue = 10; // curtainValue değişkenini güncelle
+    publishCurtainValue(); // Yeni perde değerini MQTT ile yayınla
+    saveCurtainValue(); // Yeni perde değerini SD karta kaydet
+    Serial.println("Perde değeri ayarlandı: 10");
+    stopMotor(); // Motoru durdur
+  }
+}
+void stopMotor() {
+  // Motoru durdur
+  digitalWrite(motorPin1, LOW);
+  digitalWrite(motorPin2, LOW);
+  analogWrite(motorSpeed, 0);
+  
+  // Motor durdu
+  motorMoving = false;
+}
+void saveCurtainValue() {
+  // SD karta perde değerini kaydet
+  File file = SD.open(fileName, FILE_WRITE);
+  if (file) {
+    file.println(curtainValue);
+    file.close();
+    Serial.println("Perde değeri SD karta kaydedildi.");
+  } else {
+    Serial.println("Perde değeri kaydedilemedi, dosya açılamadı!");
+  }
+}
+
+
+//void checkMotorStop() {
+//  if (motorMoving && millis() - motorStartTime >= motorRunTime) {
+//    stopMotor(); // Belirli süre dolunca motoru durdur
+//  }
+//  publishCurtainValue();
+//}
+void publishCurtainValue() {
+  String message = String(curtainValue); // Perde değerini stringe dönüştür
+  client.publish("blindbr/curtain_value", message.c_str()); // MQTT ile perde değerini yayınla
+}
